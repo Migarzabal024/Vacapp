@@ -1,0 +1,236 @@
+🐄 VacApp
+
+Plataforma móvil para gestión, compra, venta y seguimiento de ganado bovino desarrollada con React Native, Node.js y MySQL.
+
+
+
+📑 Índice
+🚀 Instalación rápida
+🛠 Requisitos
+⚙️ Configuración inicial
+🗄 Base de datos
+▶️ Ejecución del proyecto
+📂 Estructura del proyecto
+🔌 API y Endpoints
+🐞 Solución de problemas
+📋 Versiones compatibles
+🚀 Instalación Rápida
+1️⃣ Clonar el repositorio
+git clone https://github.com/tu-organizacion/vacapp.git
+cd vacapp
+🛠 Requisitos Previos
+
+Instalá los siguientes programas:
+
+Herramienta	Versión
+🟢 Node.js	18+
+☕ Java JDK	17
+🤖 Android Studio	API 35
+🐬 MySQL	8
+📦 XAMPP	8.2+
+🌿 Git	Última
+💻 VS Code	Recomendado
+⚙️ Configuración del Entorno
+📱 Android SDK
+
+Configurar la variable:
+
+ANDROID_HOME=C:\Users\TU_USUARIO\AppData\Local\Android\Sdk
+
+Agregar al PATH:
+
+%ANDROID_HOME%\platform-tools
+
+Verificar:
+
+adb version
+🤖 Crear Emulador Android
+Abrir Android Studio
+Virtual Device Manager
+Create Device
+Seleccionar Pixel 6
+Descargar API 35
+Iniciar emulador
+🗄 Configuración de Base de Datos
+🐬 Iniciar MySQL
+
+Abrir XAMPP:
+
+Start → MySQL
+
+Deberá aparecer:
+
+Running
+🔎 Verificar conexión
+cd /c/xampp/mysql/bin
+
+./mysql -u root -p
+
+Si aparece:
+
+mysql>
+
+Todo está funcionando correctamente.
+
+📂 Configuración del Proyecto
+📥 Instalar dependencias Frontend
+npm install
+📥 Instalar dependencias Backend
+cd backend
+
+npm install
+🔐 Crear archivo .env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=vacapp
+
+JWT_SECRET=vacapp_secreto_super_largo_y_seguro_2024
+JWT_EXPIRES_IN=7d
+
+PORT=3000
+NODE_ENV=development
+🏗 Inicializar Base de Datos
+npm run db:init
+
+Resultado esperado:
+
+✅ Conectado a MySQL
+✅ Base de datos creada
+✅ Tablas creadas correctamente
+▶️ Ejecutar el Proyecto
+
+Necesitarás:
+
+✅ XAMPP
+
+✅ Emulador Android
+
+✅ 3 terminales Git Bash
+
+Terminal 1 — Backend
+cd backend
+
+npm run dev
+
+Salida esperada:
+
+✅ VacApp API corriendo en http://localhost:3000
+Terminal 2 — Metro Bundler
+npm start
+
+Salida esperada:
+
+info Dev server ready
+Terminal 3 — Android
+npm run android
+
+Salida esperada:
+
+BUILD SUCCESSFUL
+Installed on 1 device
+📱 Flujo de la Aplicación
+Splash Screen
+    ↓
+Onboarding
+    ↓
+Login / Registro
+    ↓
+Home
+    ↓
+Detalle de Animal
+📂 Estructura del Proyecto
+vacapp_cli/
+
+├── android/
+├── backend/
+│   ├── config/
+│   ├── controllers/
+│   ├── middleware/
+│   ├── routes/
+│   └── .env
+│
+├── src/
+│   ├── screens/
+│   ├── services/
+│   ├── navigation/
+│   ├── context/
+│   └── constants/
+│
+├── App.tsx
+├── index.js
+└── package.json
+🔌 API Endpoints
+Health Check
+GET /health
+Registro
+POST /auth/register
+Login
+POST /auth/login
+Logout
+POST /auth/logout
+
+🔒 Requiere JWT
+
+Usuario Actual
+GET /users/me
+
+🔒 Requiere JWT
+
+🐞 Problemas Frecuentes
+❌ SDK location not found
+
+Crear:
+
+android/local.properties
+
+Contenido:
+
+sdk.dir=C:\Users\TU_USUARIO\AppData\Local\Android\Sdk
+❌ No emulators found
+
+Abrir:
+
+Android Studio
+→ Virtual Device Manager
+→ ▶ Play
+❌ Access denied for user root
+
+Verificar:
+
+DB_PASSWORD=
+
+Si usás XAMPP por defecto debe quedar vacío.
+
+❌ Puerto 8081 ocupado
+cmd //c "netstat -ano | findstr :8081"
+
+Luego:
+
+taskkill /PID XXXX /F
+📋 Versiones Probadas
+Tecnología	Versión
+Node.js	18.x / 22.x
+npm	10.x
+React Native	0.73.6
+Android SDK	35
+Java	17
+Gradle	8.8
+MySQL	8
+XAMPP	8.2+
+🎯 Resumen Diario
+Antes de empezar
+1. Abrir XAMPP
+2. Start MySQL
+3. Abrir Android Studio
+4. Iniciar Pixel 6
+Backend
+cd backend && npm run dev
+Metro
+npm start
+Android
+npm run android
+🐄 VacApp
+
+Desarrollado para simplificar la gestión ganadera mediante una experiencia móvil moderna, segura y escalable.
