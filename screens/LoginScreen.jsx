@@ -12,19 +12,19 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!email || !pass) { Alert.alert('Error', 'Completá email y contraseña'); return; }
-    setLoading(true);
-    try {
-      await signIn({ email, password: pass });
-      // ¡Magia! Eliminamos el navigation.replace('MainTabs')
-      // Al hacer signIn exitosamente, tu App.js detectará al usuario y cambiará la pantalla por ti.
-    } catch (e) {
-      Alert.alert('Error al ingresar', e.message === 'Invalid login credentials'
-        ? 'Email o contraseña incorrectos' : e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+      if (!email || !pass) { Alert.alert('Error', 'Completá email y contraseña'); return; }
+      setLoading(true);
+      try {
+        await signIn({ email, password: pass });
+        // ¡Listo! No agregues ningún navigation.replace aquí.
+        // AuthContext detectará el login y redigirá a MainTabs automáticamente.
+      } catch (e) {
+        Alert.alert('Error al ingresar', e.message === 'Invalid login credentials'
+          ? 'Email o contraseña incorrectos' : e.message);
+      } finally {
+        setLoading(false);
+      }
+    };
 
   return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS==='ios'?'padding':'height'}>

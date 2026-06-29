@@ -1,28 +1,101 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, StatusBar, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, StatusBar, Modal, ActivityIndicator, Alert } from 'react-native';
+import { supabase } from '../lib/supabase';
 
 const C = { bg:'#0D2818', card:'#122E1C', cardB:'#1F5C30', green:'#4CAF50', lGreen:'#43D854', white:'#FFFFFF', muted:'#7AB88A', dark:'#1A2E1A', orange:'#FF9800', red:'#E53935' };
 
-const USERS = [
-  { id:1, name:'Carlos Méndez',   initials:'CM', email:'c.mendez@mail.com',      date:'12 Ene 2026', status:'Verificado', statusColor:C.green },
-  { id:2, name:'Luciana Torres',  initials:'LT', email:'lu.torres@mail.com',     date:'3 Mar 2026',  status:'Pendiente',  statusColor:C.orange },
-  { id:3, name:'Roberto Aguirre', initials:'RA', email:'r.aguirre@campo.com',    date:'20 Mar 2026', status:'Pendiente',  statusColor:C.orange },
-  { id:4, name:'Martina López',   initials:'ML', email:'m.lopez@mail.com',       date:'5 Feb 2026',  status:'Rechazado',  statusColor:C.red },
-  { id:5, name:'Jorge Villanueva',initials:'JV', email:'j.villanueva@campo.com', date:'15 Ene 2026', status:'Verificado', statusColor:C.green },
-];
-
 const FILTERS = ['Todos','Pendiente','Verificado','Rechazado'];
 
-export default function AdminUsersScreen({ navigation }) {
-  const [filter, setFilter]   = useState('Todos');
-  const [search, setSearch]   = useState('');
-  const [selected, setSelected] = useState(null);
+const getUIStatus = (dbStatus) => {
+  if (dbStatus === 'verified' || dbStatus === 'Verificado') return 'Verificado';
+  if (dbStatus === 'rejected' || dbStatus === 'Rechazado' || dbStatus === 'blocked') return 'Rechazado';
+  return 'Pendiente';
+};
 
-  const filtered = USERS.filter(u => {
-    const matchFilter = filter==='Todos' || u.status===filter;
+const getStatusColor = (uiStatus) => {
+  if (uiStatus === 'Verificado') return C.green;
+  if (uiStatus === 'Rechazado') return C.red;
+  return C.orange;
+};
+
+const getInitials = (name) => {
+  if (!name) return 'U';
+  return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+};
+
+export default function AdminUsersScreen({ navigation }) {
+  const [filter, setFilter]     = useState('Todos');
+  const [search, setSearch]     = useState('');
+  const [selected, setSelected] = useState(null);
+  const [usersDB, setUsersDB]   = useState([]);
+  const [loading, setLoading]   = useState(true);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUsersDB(data || []);
+    } catch (error) {
+      console.error('Error cargando usuarios:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  // ◄ LOGICA DE BOTONES MEJORADA CON ALERTAS DETALLADAS DE ERROR
+   const handleUpdateStatus = async (userId, newStatus) => {
+       try {
+         const { error } = await supabase
+           .from('profiles')
+           .update({
+             kyc_status: newStatus // ◄ ¡ESTA ES LA ÚNICA COLUMNA QUE DEBE QUEDAR!
+           })
+           .eq('id', userId);
+
+         if (error) {
+           Alert.alert('Error de Base de Datos', error.message);
+           return;
+         }
+
+         Alert.alert('¡Éxito!', `Usuario actualizado correctamente.`);
+         setSelected(null);
+         fetchUsers();
+       } catch (error) {
+         console.error('Error de red:', error);
+         Alert.alert('Error', 'No se pudo conectar con el servidor.');
+       }
+     };
+
+  const mappedUsers = usersDB.map(u => {
+    const uiStatus = getUIStatus(u.status || u.kyc_status);
+    const fullName = u.full_name || u.name || 'Usuario sin nombre';
+    return {
+      ...u,
+      name: fullName,
+      initials: getInitials(fullName),
+      email: u.email || 'Sin email',
+      date: u.created_at ? new Date(u.created_at).toLocaleDateString('es-AR', { day:'numeric', month:'short', year:'numeric' }) : '—',
+      status: uiStatus,
+      statusColor: getStatusColor(uiStatus)
+    };
+  });
+
+  const filtered = mappedUsers.filter(u => {
+    const matchFilter = filter === 'Todos' || u.status === filter;
     const matchSearch = u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase());
     return matchFilter && matchSearch;
   });
+
+  const pendientesCount = mappedUsers.filter(u => u.status === 'Pendiente').length;
 
   return (
     <View style={s.root}>
@@ -30,7 +103,7 @@ export default function AdminUsersScreen({ navigation }) {
 
       <View style={s.header}>
         <Text style={s.title}>Usuarios & KYC</Text>
-        <Text style={s.subtitle}>3 verificaciones pendientes</Text>
+        <Text style={s.subtitle}>{pendientesCount} verificaciones pendientes</Text>
       </View>
 
       <View style={s.searchWrap}>
@@ -46,28 +119,35 @@ export default function AdminUsersScreen({ navigation }) {
         ))}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
-        {filtered.map(u=>(
-          <View key={u.id} style={s.userCard}>
-            <View style={s.userLeft}>
-              <View style={s.userAvatar}><Text style={s.userInitials}>{u.initials}</Text></View>
-              <View style={s.userInfo}>
-                <Text style={s.userName}>{u.name}</Text>
-                <Text style={s.userEmail}>{u.email}</Text>
-                <Text style={s.userDate}>{u.date}</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color={C.green} style={{ marginTop: 40 }} />
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+          {filtered.map(u=>(
+            <View key={u.id} style={s.userCard}>
+              <View style={s.userLeft}>
+                <View style={s.userAvatar}><Text style={s.userInitials}>{u.initials}</Text></View>
+                <View style={s.userInfo}>
+                  <Text style={s.userName}>{u.name}</Text>
+                  <Text style={s.userEmail}>{u.email}</Text>
+                  <Text style={s.userDate}>{u.date}</Text>
+                </View>
+              </View>
+              <View style={s.userRight}>
+                <View style={[s.statusBadge,{backgroundColor:u.statusColor+'22'}]}>
+                  <Text style={[s.statusTxt,{color:u.statusColor}]}>{u.status}</Text>
+                </View>
+                <TouchableOpacity style={s.kycBtn} onPress={()=>setSelected(u)}>
+                  <Text style={s.kycBtnTxt}>Ver KYC</Text>
+                </TouchableOpacity>
               </View>
             </View>
-            <View style={s.userRight}>
-              <View style={[s.statusBadge,{backgroundColor:u.statusColor+'22'}]}>
-                <Text style={[s.statusTxt,{color:u.statusColor}]}>{u.status}</Text>
-              </View>
-              <TouchableOpacity style={s.kycBtn} onPress={()=>setSelected(u)}>
-                <Text style={s.kycBtnTxt}>Ver KYC</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-      </ScrollView>
+          ))}
+          {filtered.length === 0 && (
+            <Text style={{ textAlign: 'center', color: C.muted, marginTop: 20 }}>No hay usuarios para mostrar.</Text>
+          )}
+        </ScrollView>
+      )}
 
       {/* Modal KYC */}
       <Modal visible={!!selected} transparent animationType="slide" onRequestClose={()=>setSelected(null)}>
@@ -91,9 +171,9 @@ export default function AdminUsersScreen({ navigation }) {
 
               <View style={m.docCard}>
                 <View style={m.docHeader}><Text style={m.docIcon}>💳</Text><Text style={m.docTitle}>Documento de Identidad</Text></View>
-                <View style={m.docRow}><Text style={m.docLabel}>DNI</Text><Text style={m.docVal}>28.430.112</Text></View>
-                <View style={m.docRow}><Text style={m.docLabel}>Ubicación</Text><Text style={m.docVal}>Córdoba, AR</Text></View>
-                <View style={m.docRow}><Text style={m.docLabel}>Registro</Text><Text style={m.docVal}>12 Ene 2026</Text></View>
+                {selected.kyc_dni && <View style={m.docRow}><Text style={m.docLabel}>DNI</Text><Text style={m.docVal}>{selected.kyc_dni}</Text></View>}
+                <View style={m.docRow}><Text style={m.docLabel}>Ubicación</Text><Text style={m.docVal}>{selected.location || 'No especificada'}</Text></View>
+                <View style={m.docRow}><Text style={m.docLabel}>Registro</Text><Text style={m.docVal}>{selected.date}</Text></View>
               </View>
 
               <View style={m.photoPlaceholder}>
@@ -101,16 +181,15 @@ export default function AdminUsersScreen({ navigation }) {
                 <Text style={m.photoTxt}>Foto del DNI (anverso)</Text>
               </View>
 
-              {selected.status==='Pendiente' && (
-                <View style={m.actions}>
-                  <TouchableOpacity style={m.rejectBtn} onPress={()=>setSelected(null)}>
-                    <Text style={m.rejectTxt}>Rechazar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={m.approveBtn} onPress={()=>setSelected(null)}>
-                    <Text style={m.approveTxt}>Verificar ✓</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              {/* Botones de acción siempre disponibles para el Admin */}
+              <View style={m.actions}>
+                <TouchableOpacity style={m.rejectBtn} onPress={()=>handleUpdateStatus(selected.id, 'rejected')}>
+                  <Text style={m.rejectTxt}>Rechazar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={m.approveBtn} onPress={()=>handleUpdateStatus(selected.id, 'verified')}>
+                  <Text style={m.approveTxt}>Verificar ✓</Text>
+                </TouchableOpacity>
+              </View>
             </>}
           </View>
         </View>

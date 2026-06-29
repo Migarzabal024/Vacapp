@@ -17,14 +17,29 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
-        "android.permission.CAMERA"
-      ]
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "package": "com.migarzabal011.VacApp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-barcode-scanner"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "VacApp necesita acceso a la camara para escanear codigos QR."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "VacApp necesita acceso a tus fotos para subir imagenes de animales."
+        }
+      ]
     ],
     "extra": {
       "eas": {

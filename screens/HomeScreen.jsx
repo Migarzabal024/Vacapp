@@ -20,7 +20,7 @@ const CATEGORIES = [
 const EMOJI = { Toros:'🐂', Vacas:'🐄', Novillos:'🥩', Vaquillonas:'🌿', Terneros:'🐮', Reproductores:'🏆' };
 
 export default function HomeScreen({ navigation }) {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -39,6 +39,8 @@ export default function HomeScreen({ navigation }) {
       const { data, error } = await supabase
         .from('publications')
         .select('*')
+        .eq('status', 'active')
+        .neq('user_id', user.id)  // solo publicaciones de OTROS usuarios
         .order('created_at', { ascending: false });
 
       if (error) throw error;

@@ -11,6 +11,7 @@ const MENU = [
   { icon:'🔔', label:'Notificaciones',              chevron:true },
   { icon:'❤️', label:'Animales favoritos',          chevron:true, route:'Favorites'},
   { icon:'💵', label:'Historial de transacciones',  chevron:true, route:'Transactions' },
+  { icon:'💬', label:'Soporte & Ayuda',              chevron:true, route:'UserSupport' },
   { icon:'⚙️', label:'Configuración',               chevron:true },
 ];
 

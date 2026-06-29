@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, StatusBar, Alert, ActivityIndicator, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,42 +12,36 @@ const BREEDS = ['Aberdeen Angus','Hereford','Braford','Brangus','Limousin','Shor
 
 export default function NewPublicationScreen({ navigation }) {
   const { user } = useAuth();
-  const [step,        setStep]       = useState(1);
-  const [photo,       setPhoto]      = useState(null);  // URI local de la imagen
-  const [photoUrl,    setPhotoUrl]   = useState('');    // URL publica en Supabase
-  const [uploading,   setUploading]  = useState(false);
-  const [name,        setName]       = useState('');
-  const [category,    setCat]        = useState('');
-  const [breed,       setBreed]      = useState('');
-  const [kyc,         setKyc]        = useState(false);
-  const [weight,      setWeight]     = useState('');
-  const [age,         setAge]        = useState('');
-  const [price,       setPrice]      = useState('');
-  const [location,    setLoc]        = useState('');
-  const [desc,        setDesc]       = useState('');
-  const [showBreeds,  setShowBreeds] = useState(false);
-  const [loading,     setLoading]    = useState(false);
+  const [step,       setStep]      = useState(1);
+  const [photo,      setPhoto]     = useState(null);
+  const [photoUrl,   setPhotoUrl]  = useState('');
+  const [uploading,  setUploading] = useState(false);
+  const [name,       setName]      = useState('');
+  const [category,   setCat]       = useState('');
+  const [breed,      setBreed]     = useState('');
+  const [kyc,        setKyc]       = useState(false);
+  const [weight,     setWeight]    = useState('');
+  const [age,        setAge]       = useState('');
+  const [price,      setPrice]     = useState('');
+  const [location,   setLoc]       = useState('');
+  const [desc,       setDesc]      = useState('');
+  const [showBreeds, setShowBreeds]= useState(false);
+  const [loading,    setLoading]   = useState(false);
 
-  // ── Seleccionar imagen ────────────────────────────────
   const pickImage = async () => {
     try {
-      // Pedir permiso
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permiso requerido', 'Necesitamos acceso a tu galeria para subir fotos');
         return;
       }
-
-      // Abrir selector
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.7,
       });
-
       if (result.canceled) return;
-
       const uri = result.assets[0].uri;
       setPhoto(uri);
       await uploadImage(uri);
@@ -56,28 +50,22 @@ export default function NewPublicationScreen({ navigation }) {
     }
   };
 
-  // ── Subir imagen a Supabase Storage ──────────────────
   const uploadImage = async (uri) => {
     setUploading(true);
     try {
-      // Leer el archivo como base64
+      const fileName = `${user.id}_${Date.now()}.jpg`;
+      const filePath = `publications/${fileName}`;
+
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Nombre unico para el archivo
-      const fileName = `${user.id}_${Date.now()}.jpg`;
-      const filePath = `publications/${fileName}`;
-
-      // Convertir base64 a ArrayBuffer
       const byteCharacters = atob(base64);
-      const byteNumbers = new Array(byteCharacters.length);
+      const byteArray = new Uint8Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
+        byteArray[i] = byteCharacters.charCodeAt(i);
       }
-      const byteArray = new Uint8Array(byteNumbers);
 
-      // Subir a Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('publications')
         .upload(filePath, byteArray, {
@@ -87,7 +75,6 @@ export default function NewPublicationScreen({ navigation }) {
 
       if (uploadError) throw uploadError;
 
-      // Obtener URL publica
       const { data } = supabase.storage
         .from('publications')
         .getPublicUrl(filePath);
@@ -102,7 +89,6 @@ export default function NewPublicationScreen({ navigation }) {
     }
   };
 
-  // ── Validar y pasar al paso 2 ─────────────────────────
   const goStep2 = () => {
     if (!name || !category || !breed || !weight || !price || !location) {
       Alert.alert('Campos obligatorios', 'Completa nombre, categoria, raza, peso, precio y ubicacion');
@@ -111,7 +97,6 @@ export default function NewPublicationScreen({ navigation }) {
     setStep(2);
   };
 
-  // ── Publicar en Supabase ──────────────────────────────
   const publish = async () => {
     setLoading(true);
     try {
@@ -129,9 +114,7 @@ export default function NewPublicationScreen({ navigation }) {
         photo_url:    photoUrl || null,
         status:       'active',
       });
-
       if (error) throw error;
-
       Alert.alert('Publicacion creada!', 'Tu animal fue publicado exitosamente', [
         { text: 'Ver mis publicaciones', onPress: () => navigation.replace('Publications') }
       ]);
@@ -142,7 +125,6 @@ export default function NewPublicationScreen({ navigation }) {
     }
   };
 
-  // ── PASO 1 ────────────────────────────────────────────
   if (step === 1) return (
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <StatusBar barStyle="dark-content" backgroundColor={C.white} />
@@ -162,7 +144,6 @@ export default function NewPublicationScreen({ navigation }) {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
 
-        {/* Foto */}
         <Text style={s.label}>Foto del animal</Text>
         <TouchableOpacity style={[s.photoBox, photo && s.photoBoxFilled]} onPress={pickImage} disabled={uploading}>
           {uploading ? (
@@ -186,13 +167,11 @@ export default function NewPublicationScreen({ navigation }) {
           )}
         </TouchableOpacity>
 
-        {/* Nombre */}
         <Text style={s.label}>Nombre del animal *</Text>
         <View style={s.inputWrap}>
           <TextInput style={s.input} placeholder="Ej: Toro Genesis IV" placeholderTextColor="#BBB" value={name} onChangeText={setName} />
         </View>
 
-        {/* Categoria */}
         <Text style={s.label}>Categoria *</Text>
         <View style={s.chipsWrap}>
           {CATEGORIES.map(c => (
@@ -202,7 +181,6 @@ export default function NewPublicationScreen({ navigation }) {
           ))}
         </View>
 
-        {/* Genetica */}
         <Text style={s.label}>Tipo de genetica *</Text>
         <TouchableOpacity style={s.selectBox} onPress={() => setShowBreeds(!showBreeds)}>
           <Text style={breed ? s.selectVal : s.selectPh}>{breed || 'Selecciona la raza / genetica'}</Text>
@@ -218,7 +196,6 @@ export default function NewPublicationScreen({ navigation }) {
           </View>
         )}
 
-        {/* KYC */}
         <View style={s.kycBox}>
           <Text style={s.kycLabel}>Verificacion KYC</Text>
           <TouchableOpacity style={[s.toggle, kyc && s.toggleOn]} onPress={() => setKyc(!kyc)}>
@@ -227,7 +204,6 @@ export default function NewPublicationScreen({ navigation }) {
           <Text style={s.kycStatus}>{kyc ? 'KYC verificado' : 'KYC no verificado'}</Text>
         </View>
 
-        {/* Peso y Edad */}
         <View style={s.row2}>
           <View style={s.half}>
             <Text style={s.label}>Peso (kg) *</Text>
@@ -243,19 +219,16 @@ export default function NewPublicationScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Precio */}
         <Text style={s.label}>Precio (ARS) *</Text>
         <View style={s.inputWrap}>
           <TextInput style={s.input} placeholder="Ej: 1500000" placeholderTextColor="#BBB" keyboardType="numeric" value={price} onChangeText={setPrice} />
         </View>
 
-        {/* Ubicacion */}
         <Text style={s.label}>Ubicacion *</Text>
         <View style={s.inputWrap}>
           <TextInput style={s.input} placeholder="Ej: Cordoba, Argentina" placeholderTextColor="#BBB" value={location} onChangeText={setLoc} />
         </View>
 
-        {/* Descripcion */}
         <Text style={s.label}>Descripcion</Text>
         <View style={[s.inputWrap, { height: 100, alignItems: 'flex-start', paddingTop: 12 }]}>
           <TextInput style={[s.input, { height: 80 }]} placeholder="Conta mas sobre el animal..." placeholderTextColor="#BBB" multiline value={desc} onChangeText={setDesc} />
@@ -268,7 +241,6 @@ export default function NewPublicationScreen({ navigation }) {
     </KeyboardAvoidingView>
   );
 
-  // ── PASO 2 ────────────────────────────────────────────
   return (
     <View style={s.root}>
       <StatusBar barStyle="dark-content" backgroundColor={C.white} />
@@ -323,10 +295,7 @@ export default function NewPublicationScreen({ navigation }) {
             <Text style={s.backStepTxt}>← Volver</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[s.publishBtn, loading && { opacity: 0.7 }]} onPress={publish} disabled={loading} activeOpacity={0.85}>
-            {loading
-              ? <ActivityIndicator color="#FFF" />
-              : <Text style={s.publishBtnTxt}>Publicar</Text>
-            }
+            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={s.publishBtnTxt}>Publicar</Text>}
           </TouchableOpacity>
         </View>
 

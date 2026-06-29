@@ -27,6 +27,7 @@ import AdminPublicationsScreen from './screens/AdminPublicationsScreen';
 import AdminHelpDeskScreen     from './screens/AdminHelpDeskScreen';
 import PurchaseScreen  from './screens/PurchaseScreen';
 import QRScannerScreen from './screens/QRScannerScreen';
+import UserSupportScreen from './screens/UserSupportScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab   = createBottomTabNavigator();
@@ -157,6 +158,7 @@ function AppNavigator() {
           <Stack.Screen name="Favorites"         component={FavoritesScreen}         options={{animation:'slide_from_right'}} />
           <Stack.Screen name="Purchase"  component={PurchaseScreen}  options={{animation:'slide_from_bottom'}} />
           <Stack.Screen name="QRScanner" component={QRScannerScreen} options={{animation:'slide_from_bottom'}} />
+          <Stack.Screen name="UserSupport" component={UserSupportScreen} options={{animation:'slide_from_right'}} />
         </>
       )}
     </Stack.Navigator>

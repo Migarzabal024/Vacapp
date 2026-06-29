@@ -1,322 +1,348 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, StatusBar, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, StatusBar, Modal, ActivityIndicator, Alert, Image } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { supabase } from '../lib/supabase';
 
-// ¡Nuevas importaciones para Supabase y Autenticación!
-import { supabase } from '../supabase'; // <-- Asegúrate de que esta ruta sea la correcta para tu proyecto
-import { useAuth } from '../context/AuthContext';
+const C = { bg:'#0D2818', card:'#122E1C', cardB:'#1F5C30', green:'#4CAF50', lGreen:'#43D854', white:'#FFFFFF', muted:'#7AB88A', orange:'#FF9800', red:'#E53935', blue:'#2196F3' };
 
-const C = { bg:'#0D2818', white:'#FFFFFF', green:'#4CAF50', lGreen:'#43D854', dark:'#1A1A1A', muted:'#888', inputBg:'#F8F8F8', border:'#E0E0E0', lightGreen:'#E8F5E9' };
+const EMOJI = { Toros:'🐂', Vacas:'🐄', Novillos:'🥩', Vaquillonas:'🌿', Terneros:'🐮', Reproductores:'🏆' };
 
-const CATEGORIES = ['Toros','Vacas','Novillos','Vaquillonas','Terneros','Reproductores'];
-const BREEDS = ['Aberdeen Angus','Hereford','Braford','Brangus','Limousin','Shorthorn','Simmental','Angus Colorado'];
+const STATUS_LABEL = { active:'Activa', pending:'Pendiente', sold:'Vendida', paused:'Pausada', rejected:'Rechazada' };
+const STATUS_COLOR = { active:C.green, pending:C.orange, sold:C.blue, paused:C.muted, rejected:C.red };
 
-export default function NewPublicationScreen({ navigation }) {
-  const { user } = useAuth(); // <- Obtenemos al usuario logueado
-  const [step, setStep] = useState(1);
+const FILTERS = ['Todas','Pendientes','Activas','Vendidas','Pausadas'];
 
-  // Paso 1
-  const [photo, setPhoto]     = useState(null);
-  const [name, setName]       = useState('');
-  const [category, setCat]    = useState('');
-  const [breed, setBreed]     = useState('');
-  const [kyc, setKyc]         = useState(false);
-  const [weight, setWeight]   = useState('');
-  const [age, setAge]         = useState('');
-  const [price, setPrice]     = useState('');
-  const [location, setLoc]    = useState('');
-  const [desc, setDesc]       = useState('');
+export default function AdminPublicationsScreen({ navigation }) {
+  const [filter,   setFilter]   = useState('Todas');
+  const [search,   setSearch]   = useState('');
+  const [pubs,     setPubs]     = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [selected, setSelected] = useState(null);
 
-  // Paso 2
-  const [events, setEvents]   = useState([]);
-  const [showBreeds, setShowBreeds] = useState(false);
-
-  const goStep2 = () => {
-    if (!name || !category || !breed || !weight || !price || !location) {
-      Alert.alert('Campos obligatorios','Completá nombre, categoría, raza, peso, precio y ubicación');
-      return;
-    }
-    setStep(2);
-  };
-
-  // Función real para publicar en Supabase
-  const publish = async () => {
-    // 1. Verificamos que tengamos un usuario logueado
-    if (!user || !user.id) {
-      Alert.alert('Error', 'Debes iniciar sesión para publicar');
-      return;
-    }
-
-    // 2. Armamos el objeto respetando los tipos de datos de tu SQL (usando parseInt para los números)
-    const nuevaPublicacion = {
-      user_id: user.id, // Viene del AuthContext
-      name: name,
-      category: category,
-      breed: breed,
-      weight_kg: parseInt(weight) || 0, // Convertido a número entero
-      age_months: parseInt(age) || 0,   // Convertido a número entero
-      price_ars: parseInt(price) || 0,  // Convertido a número entero
-      location: location,
-      description: desc,
-      kyc_verified: kyc,
-      // photo_url: null -> Listo para cuando agregues subida de imágenes
-    };
-
+  const fetchPubs = async () => {
+    setLoading(true);
     try {
-      // 3. Intentamos insertar en Supabase
       const { data, error } = await supabase
         .from('publications')
-        .insert([nuevaPublicacion]);
-
-      if (error) {
-        console.error("❌ Error de Supabase:", error);
-        Alert.alert('Error al publicar', error.message);
-        return;
-      }
-
-      // 4. Éxito
-      console.log("✅ Publicación exitosa");
-      Alert.alert('¡Publicación creada!','Tu animal fue publicado exitosamente 🎉', [
-        { text:'Ver mis publicaciones', onPress:()=>navigation.replace('Publications') }
-      ]);
-
-    } catch (err) {
-      console.error("❌ Error inesperado:", err);
-      Alert.alert('Error inesperado', 'Revisa la consola para más detalles.');
+        .select('*, profiles(full_name, kyc_status)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setPubs(data || []);
+    } catch (e) {
+      Alert.alert('Error', 'No se pudieron cargar las publicaciones');
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (step === 1) return (
-    <KeyboardAvoidingView style={s.root} behavior={Platform.OS==='ios'?'padding':'height'}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.white} />
+  useFocusEffect(useCallback(() => { fetchPubs(); }, []));
 
-      {/* Header */}
-      <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={()=>navigation.goBack()}>
-          <Text style={s.backIcon}>‹</Text>
-        </TouchableOpacity>
-        <View style={s.headerCenter}>
-          <Text style={s.headerTitle}>Nueva Publicación</Text>
-          <Text style={s.headerSub}>Paso 1 de 2</Text>
-        </View>
-      </View>
+  const handleUpdateStatus = async (pubId, newStatus) => {
+    try {
+      const { error } = await supabase
+        .from('publications')
+        .update({ status: newStatus })
+        .eq('id', pubId);
+      if (error) throw error;
+      Alert.alert('Actualizado', `Publicacion marcada como ${STATUS_LABEL[newStatus]}`);
+      setSelected(null);
+      fetchPubs();
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    }
+  };
 
-      {/* Barra de progreso */}
-      <View style={s.progressBar}>
-        <View style={[s.progressFill,{width:'50%'}]}/>
-        <View style={[s.progressEmpty,{flex:1}]}/>
-      </View>
+  const handleDelete = (pub) => {
+    Alert.alert(
+      'Eliminar publicacion',
+      `Seguro que queres eliminar "${pub.name}"? Esta accion no se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: async () => {
+          const { error } = await supabase.from('publications').delete().eq('id', pub.id);
+          if (!error) { setSelected(null); fetchPubs(); }
+          else Alert.alert('Error', 'No se pudo eliminar');
+        }},
+      ]
+    );
+  };
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+  const filtered = pubs.filter(p => {
+    const matchFilter =
+      filter === 'Todas'     ? true :
+      filter === 'Pendientes'? p.status === 'pending' :
+      filter === 'Activas'   ? p.status === 'active'  :
+      filter === 'Vendidas'  ? p.status === 'sold'     :
+      filter === 'Pausadas'  ? p.status === 'paused'   : true;
+    const matchSearch = search.trim() === '' ||
+      p.name?.toLowerCase().includes(search.toLowerCase()) ||
+      p.breed?.toLowerCase().includes(search.toLowerCase()) ||
+      p.location?.toLowerCase().includes(search.toLowerCase()) ||
+      p.profiles?.full_name?.toLowerCase().includes(search.toLowerCase());
+    return matchFilter && matchSearch;
+  });
 
-        {/* Foto */}
-        <Text style={s.label}>Foto del animal</Text>
-        <TouchableOpacity style={s.photoBox}>
-          <Text style={s.photoIcon}>🖼️</Text>
-          <Text style={s.photoTxt}>Tocar para agregar foto</Text>
-          <Text style={s.photoSub}>JPG, PNG hasta 10 MB</Text>
-        </TouchableOpacity>
+  const pendientes = pubs.filter(p => p.status === 'pending').length;
 
-        {/* Nombre */}
-        <Text style={s.label}>Nombre del animal *</Text>
-        <View style={s.inputWrap}>
-          <TextInput style={s.input} placeholder="Ej: Toro Génesis IV" placeholderTextColor="#BBB" value={name} onChangeText={setName}/>
-        </View>
-
-        {/* Categoría */}
-        <Text style={s.label}>Categoría *</Text>
-        <View style={s.chipsWrap}>
-          {CATEGORIES.map(c=>(
-            <TouchableOpacity key={c} style={[s.chip, category===c && s.chipActive]} onPress={()=>setCat(c)}>
-              <Text style={[s.chipTxt, category===c && s.chipTxtActive]}>{c}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Raza */}
-        <Text style={s.label}>Tipo de genética *</Text>
-        <TouchableOpacity style={s.selectBox} onPress={()=>setShowBreeds(!showBreeds)}>
-          <Text style={breed?s.selectVal:s.selectPh}>{breed||'Seleccioná la raza / genética'}</Text>
-          <Text style={s.selectArrow}>{showBreeds?'▲':'▼'}</Text>
-        </TouchableOpacity>
-        {showBreeds && (
-          <View style={s.dropdown}>
-            {BREEDS.map(b=>(
-              <TouchableOpacity key={b} style={s.dropdownItem} onPress={()=>{setBreed(b);setShowBreeds(false);}}>
-                <Text style={s.dropdownTxt}>{b}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* KYC */}
-        <View style={s.kycBox}>
-          <Text style={s.kycLabel}>Verificación KYC</Text>
-          <TouchableOpacity style={[s.toggle, kyc&&s.toggleOn]} onPress={()=>setKyc(!kyc)}>
-            <View style={[s.toggleThumb, kyc&&s.toggleThumbOn]}/>
-          </TouchableOpacity>
-          <Text style={s.kycStatus}>{kyc?'KYC verificado ✅':'KYC no verificado'}</Text>
-        </View>
-
-        {/* Peso y Edad */}
-        <View style={s.row2}>
-          <View style={s.half}>
-            <Text style={s.label}>Peso (kg) *</Text>
-            <View style={s.inputWrap}>
-              <TextInput style={s.input} placeholder="Ej: 450" placeholderTextColor="#BBB" keyboardType="numeric" value={weight} onChangeText={setWeight}/>
-            </View>
-          </View>
-          <View style={s.half}>
-            <Text style={s.label}>Edad (meses) *</Text>
-            <View style={s.inputWrap}>
-              <TextInput style={s.input} placeholder="Ej: 36" placeholderTextColor="#BBB" keyboardType="numeric" value={age} onChangeText={setAge}/>
-            </View>
-          </View>
-        </View>
-
-        {/* Precio */}
-        <Text style={s.label}>Precio (ARS) *</Text>
-        <View style={s.inputWrap}>
-          <TextInput style={s.input} placeholder="Ej: $1.500.000" placeholderTextColor="#BBB" keyboardType="numeric" value={price} onChangeText={setPrice}/>
-        </View>
-
-        {/* Ubicación */}
-        <Text style={s.label}>Ubicación *</Text>
-        <View style={s.inputWrap}>
-          <TextInput style={s.input} placeholder="Ej: Córdoba, Argentina" placeholderTextColor="#BBB" value={location} onChangeText={setLoc}/>
-        </View>
-
-        {/* Descripción */}
-        <Text style={s.label}>Descripción</Text>
-        <View style={[s.inputWrap,{height:100,alignItems:'flex-start',paddingTop:12}]}>
-          <TextInput style={[s.input,{height:80}]} placeholder="Contá más sobre el animal: condición corporal, documentación, detalles del lote..." placeholderTextColor="#BBB" multiline value={desc} onChangeText={setDesc}/>
-        </View>
-
-        <TouchableOpacity style={s.nextBtn} onPress={goStep2} activeOpacity={0.85}>
-          <Text style={s.nextBtnTxt}>Continuar → Historial Reproductivo</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
-
-  // ── PASO 2 ───────────────────────────────────────────────
   return (
     <View style={s.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.white} />
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={()=>setStep(1)}>
-          <Text style={s.backIcon}>‹</Text>
-        </TouchableOpacity>
-        <View style={s.headerCenter}>
-          <Text style={s.headerTitle}>Nueva Publicación</Text>
-          <Text style={s.headerSub}>Paso 2 de 2</Text>
-        </View>
+        <Text style={s.title}>Publicaciones</Text>
+        <Text style={s.subtitle}>{pendientes} pendientes de revision · {pubs.length} total</Text>
       </View>
 
-      <View style={s.progressBar}>
-        <View style={[s.progressFill,{width:'100%'}]}/>
+      {/* Buscador */}
+      <View style={s.searchWrap}>
+        <Text style={s.searchIcon}>🔍</Text>
+        <TextInput
+          style={s.searchInput}
+          placeholder="Buscar por nombre, raza, vendedor..."
+          placeholderTextColor={C.muted}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch('')}>
+            <Text style={{ color: C.muted, fontSize: 16 }}>✕</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
-        <Text style={s.step2Title}>Historial Reproductivo</Text>
-        <Text style={s.step2Sub}>Agregá los eventos del historial del animal (opcional)</Text>
-
-        <TouchableOpacity style={s.addEventBtn} onPress={()=>Alert.alert('Próximamente','Esta función estará disponible en la siguiente versión')}>
-          <Text style={s.addEventTxt}>+ Agregar evento reproductivo</Text>
-        </TouchableOpacity>
-
-        {/* Resumen */}
-        <View style={s.summaryCard}>
-          <Text style={s.summaryTitle}>RESUMEN DE PUBLICACIÓN</Text>
-          {[
-            ['Animal', name],
-            ['Genética', breed],
-            ['Categoría', category],
-            ['Peso', weight ? weight+' kg' : '—'],
-            ['Edad', age ? age+' meses' : '—'],
-            ['Precio', price ? '$'+price : '—'],
-            ['KYC', kyc ? '✅ Verificado' : '❌ No verificado'],
-            ['Historial', events.length+' eventos'],
-          ].map(([label,val])=>(
-            <View key={label} style={s.summaryRow}>
-              <Text style={s.summaryLabel}>{label}</Text>
-              <Text style={s.summaryVal}>{val||'—'}</Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={s.step2Btns}>
-          <TouchableOpacity style={s.backStep} onPress={()=>setStep(1)}>
-            <Text style={s.backStepTxt}>← Volver</Text>
+      {/* Filtros */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}
+        contentContainerStyle={s.filtersRow}>
+        {FILTERS.map(f => (
+          <TouchableOpacity key={f}
+            style={[s.filterChip, filter === f && s.filterChipActive]}
+            onPress={() => setFilter(f)}>
+            <Text style={[s.filterTxt, filter === f && s.filterTxtActive]}>{f}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.publishBtn} onPress={publish} activeOpacity={0.85}>
-            <Text style={s.publishBtnTxt}>📤 Publicar</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={s.cancelBtn} onPress={()=>navigation.goBack()}>
-          <Text style={s.cancelBtnTxt}>Cancelar publicación</Text>
-        </TouchableOpacity>
+        ))}
       </ScrollView>
+
+      {loading ? (
+        <View style={s.loadingWrap}>
+          <ActivityIndicator color={C.green} size="large" />
+          <Text style={s.loadingTxt}>Cargando publicaciones...</Text>
+        </View>
+      ) : (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
+          {filtered.length === 0 ? (
+            <View style={s.emptyWrap}>
+              <Text style={s.emptyIcon}>📋</Text>
+              <Text style={s.emptyTitle}>Sin publicaciones</Text>
+              <Text style={s.emptySub}>No hay publicaciones para este filtro</Text>
+            </View>
+          ) : (
+            filtered.map(pub => {
+              const emoji      = EMOJI[pub.category] || '🐄';
+              const statusLbl  = STATUS_LABEL[pub.status] || pub.status;
+              const statusClr  = STATUS_COLOR[pub.status] || C.muted;
+              const vendedor   = pub.profiles?.full_name || 'Sin nombre';
+              const fecha      = new Date(pub.created_at).toLocaleDateString('es-AR', { day:'numeric', month:'short', year:'numeric' });
+
+              return (
+                <TouchableOpacity key={pub.id} style={s.pubCard}
+                  onPress={() => setSelected(pub)} activeOpacity={0.85}>
+                  <View style={s.pubTop}>
+                    <View style={s.pubImgWrap}>
+                      {pub.photo_url
+                        ? <Image source={{ uri: pub.photo_url }} style={s.pubImg} resizeMode="cover" />
+                        : <Text style={s.pubEmoji}>{emoji}</Text>
+                      }
+                    </View>
+                    <View style={s.pubInfo}>
+                      <View style={s.pubNameRow}>
+                        <Text style={s.pubName} numberOfLines={1}>{pub.name}</Text>
+                        <View style={[s.statusBadge, { backgroundColor: statusClr + '22' }]}>
+                          <Text style={[s.statusTxt, { color: statusClr }]}>{statusLbl}</Text>
+                        </View>
+                      </View>
+                      <Text style={s.pubBreed}>{pub.breed} · {pub.category}</Text>
+                      <Text style={s.pubVendedor}>👤 {vendedor}</Text>
+                      <Text style={s.pubMeta}>📍 {pub.location} · {fecha}</Text>
+                      <Text style={s.pubPrice}>$ {pub.price_ars?.toLocaleString('es-AR')}</Text>
+                    </View>
+                  </View>
+                  {pub.status === 'pending' && (
+                    <View style={s.pendingBanner}>
+                      <Text style={s.pendingBannerTxt}>⚠️ Requiere revisión del administrador</Text>
+                      <View style={s.pendingActions}>
+                        <TouchableOpacity style={s.rejectBtnSmall}
+                          onPress={() => handleUpdateStatus(pub.id, 'rejected')}>
+                          <Text style={s.rejectBtnSmallTxt}>Rechazar</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={s.approveBtnSmall}
+                          onPress={() => handleUpdateStatus(pub.id, 'active')}>
+                          <Text style={s.approveBtnSmallTxt}>Aprobar ✓</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
+
+      {/* Modal detalle */}
+      <Modal visible={!!selected} transparent animationType="slide" onRequestClose={() => setSelected(null)}>
+        <View style={m.overlay}>
+          <View style={m.modal}>
+            <View style={m.modalHeader}>
+              <Text style={m.modalTitle}>Detalle de Publicacion</Text>
+              <TouchableOpacity onPress={() => setSelected(null)}>
+                <Text style={m.closeBtn}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {selected && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Imagen */}
+                <View style={m.imgWrap}>
+                  {selected.photo_url
+                    ? <Image source={{ uri: selected.photo_url }} style={m.img} resizeMode="cover" />
+                    : <Text style={m.imgEmoji}>{EMOJI[selected.category] || '🐄'}</Text>
+                  }
+                </View>
+
+                {/* Info */}
+                <Text style={m.pubName}>{selected.name}</Text>
+                <View style={[m.statusBadge, { backgroundColor: (STATUS_COLOR[selected.status] || C.muted) + '22', alignSelf: 'flex-start', marginBottom: 16 }]}>
+                  <Text style={[m.statusTxt, { color: STATUS_COLOR[selected.status] || C.muted }]}>
+                    {STATUS_LABEL[selected.status] || selected.status}
+                  </Text>
+                </View>
+
+                {[
+                  ['Vendedor',  selected.profiles?.full_name || '—'],
+                  ['Categoria', selected.category],
+                  ['Raza',      selected.breed],
+                  ['Peso',      selected.weight_kg + ' kg'],
+                  ['Edad',      selected.age_months + ' meses'],
+                  ['Precio',    '$ ' + selected.price_ars?.toLocaleString('es-AR')],
+                  ['Ubicacion', selected.location],
+                  ['KYC',       selected.kyc_verified ? '✅ Verificado' : '❌ No verificado'],
+                  ['Publicado', new Date(selected.created_at).toLocaleDateString('es-AR')],
+                ].map(([label, val]) => (
+                  <View key={label} style={m.row}>
+                    <Text style={m.rowLabel}>{label}</Text>
+                    <Text style={m.rowVal}>{val}</Text>
+                  </View>
+                ))}
+
+                {selected.description ? (
+                  <View style={m.descCard}>
+                    <Text style={m.descLabel}>DESCRIPCION</Text>
+                    <Text style={m.descTxt}>{selected.description}</Text>
+                  </View>
+                ) : null}
+
+                {/* Acciones */}
+                <View style={m.actions}>
+                  {selected.status !== 'active' && (
+                    <TouchableOpacity style={m.approveBtn}
+                      onPress={() => handleUpdateStatus(selected.id, 'active')}>
+                      <Text style={m.approveTxt}>✓ Activar</Text>
+                    </TouchableOpacity>
+                  )}
+                  {selected.status !== 'paused' && (
+                    <TouchableOpacity style={m.pauseBtn}
+                      onPress={() => handleUpdateStatus(selected.id, 'paused')}>
+                      <Text style={m.pauseTxt}>⏸ Pausar</Text>
+                    </TouchableOpacity>
+                  )}
+                  {selected.status !== 'rejected' && (
+                    <TouchableOpacity style={m.rejectBtn}
+                      onPress={() => handleUpdateStatus(selected.id, 'rejected')}>
+                      <Text style={m.rejectTxt}>✕ Rechazar</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <TouchableOpacity style={m.deleteBtn} onPress={() => handleDelete(selected)}>
+                  <Text style={m.deleteTxt}>🗑️ Eliminar publicacion</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  root:{flex:1,backgroundColor:C.white},
-  header:{flexDirection:'row',alignItems:'center',paddingHorizontal:16,paddingTop:52,paddingBottom:12,gap:12,backgroundColor:C.white,borderBottomWidth:1,borderBottomColor:'#F0F0F0'},
-  backBtn:{width:36,height:36,borderRadius:12,backgroundColor:'#F0F0F0',alignItems:'center',justifyContent:'center'},
-  backIcon:{fontSize:22,color:C.dark,fontWeight:'300'},
-  headerCenter:{flex:1},
-  headerTitle:{fontSize:18,fontWeight:'700',color:C.dark},
-  headerSub:{fontSize:12,color:C.muted,marginTop:1},
-  progressBar:{flexDirection:'row',height:4,backgroundColor:'#E0E0E0'},
-  progressFill:{height:4,backgroundColor:C.green},
-  progressEmpty:{height:4,backgroundColor:'#E0E0E0'},
-  scroll:{padding:20,paddingBottom:60},
-  label:{fontSize:13,fontWeight:'600',color:C.dark,marginBottom:8,marginTop:4},
-  inputWrap:{borderWidth:1,borderColor:C.border,borderRadius:12,paddingHorizontal:14,height:50,justifyContent:'center',backgroundColor:C.inputBg,marginBottom:4},
-  input:{fontSize:15,color:C.dark},
-  photoBox:{borderWidth:2,borderColor:C.green,borderStyle:'dashed',borderRadius:14,backgroundColor:C.lightGreen,height:110,alignItems:'center',justifyContent:'center',marginBottom:16,gap:6},
-  photoIcon:{fontSize:32,color:C.green},
-  photoTxt:{fontSize:14,color:C.green,fontWeight:'600'},
-  photoSub:{fontSize:11,color:C.muted},
-  chipsWrap:{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:16},
-  chip:{paddingHorizontal:14,paddingVertical:8,borderRadius:20,borderWidth:1,borderColor:'#DDD',backgroundColor:C.white},
-  chipActive:{backgroundColor:C.bg,borderColor:C.bg},
-  chipTxt:{fontSize:13,color:C.dark},
-  chipTxtActive:{color:C.white},
-  selectBox:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',borderWidth:1,borderColor:C.border,borderRadius:12,paddingHorizontal:14,height:50,backgroundColor:C.inputBg,marginBottom:4},
-  selectVal:{fontSize:15,color:C.dark},
-  selectPh:{fontSize:15,color:'#BBB'},
-  selectArrow:{fontSize:12,color:C.muted},
-  dropdown:{borderWidth:1,borderColor:C.border,borderRadius:12,backgroundColor:C.white,marginBottom:8,overflow:'hidden'},
-  dropdownItem:{paddingHorizontal:16,paddingVertical:14,borderBottomWidth:1,borderBottomColor:'#F5F5F5'},
-  dropdownTxt:{fontSize:14,color:C.dark},
-  kycBox:{flexDirection:'row',alignItems:'center',gap:12,backgroundColor:C.lightGreen,borderRadius:12,padding:14,marginBottom:16,borderWidth:1,borderColor:'#C8E6C9'},
-  kycLabel:{fontSize:13,fontWeight:'600',color:C.dark},
-  toggle:{width:44,height:24,borderRadius:12,backgroundColor:'#CCC',justifyContent:'center',paddingHorizontal:2},
-  toggleOn:{backgroundColor:C.green},
-  toggleThumb:{width:20,height:20,borderRadius:10,backgroundColor:C.white,shadowColor:'#000',shadowOpacity:0.2,shadowRadius:2,elevation:2},
-  toggleThumbOn:{alignSelf:'flex-end'},
-  kycStatus:{fontSize:12,color:C.muted,flex:1},
-  row2:{flexDirection:'row',gap:12},
-  half:{flex:1},
-  nextBtn:{backgroundColor:C.green,borderRadius:14,height:52,alignItems:'center',justifyContent:'center',marginTop:16},
-  nextBtnTxt:{color:C.white,fontSize:15,fontWeight:'700'},
-  step2Title:{fontSize:20,fontWeight:'700',color:C.dark,marginBottom:6},
-  step2Sub:{fontSize:14,color:C.muted,marginBottom:20},
-  addEventBtn:{borderWidth:2,borderColor:C.green,borderStyle:'dashed',borderRadius:14,height:52,alignItems:'center',justifyContent:'center',marginBottom:20},
-  addEventTxt:{fontSize:15,color:C.green,fontWeight:'600'},
-  summaryCard:{backgroundColor:C.lightGreen,borderRadius:14,padding:16,marginBottom:20,borderWidth:1,borderColor:'#C8E6C9'},
-  summaryTitle:{fontSize:11,fontWeight:'700',color:C.muted,letterSpacing:1,marginBottom:12},
-  summaryRow:{flexDirection:'row',justifyContent:'space-between',paddingVertical:6,borderBottomWidth:1,borderBottomColor:'rgba(0,0,0,0.05)'},
-  summaryLabel:{fontSize:13,color:C.muted},
-  summaryVal:{fontSize:13,color:C.dark,fontWeight:'600'},
-  step2Btns:{flexDirection:'row',gap:12,marginBottom:12},
-  backStep:{flex:1,height:52,borderRadius:14,borderWidth:1,borderColor:'#DDD',alignItems:'center',justifyContent:'center'},
-  backStepTxt:{fontSize:15,color:C.dark,fontWeight:'500'},
-  publishBtn:{flex:2,height:52,borderRadius:14,backgroundColor:C.green,alignItems:'center',justifyContent:'center'},
-  publishBtnTxt:{fontSize:15,color:C.white,fontWeight:'700'},
-  cancelBtn:{height:48,borderRadius:14,borderWidth:1,borderColor:'#FFCCCC',backgroundColor:'#FFF5F5',alignItems:'center',justifyContent:'center'},
-  cancelBtnTxt:{fontSize:14,color:'#E53935',fontWeight:'500'},
+  root:             { flex: 1, backgroundColor: C.bg },
+  header:           { paddingHorizontal: 20, paddingTop: 52, paddingBottom: 12 },
+  title:            { fontSize: 24, fontWeight: '700', color: C.white },
+  subtitle:         { fontSize: 13, color: C.muted, marginTop: 2 },
+  searchWrap:       { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 14, marginHorizontal: 20, paddingHorizontal: 14, height: 46, gap: 10, borderWidth: 1, borderColor: C.cardB, marginBottom: 12 },
+  searchIcon:       { fontSize: 16 },
+  searchInput:      { flex: 1, fontSize: 14, color: C.white },
+  filtersRow:       { paddingHorizontal: 20, gap: 8, marginBottom: 12 },
+  filterChip:       { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: C.cardB, backgroundColor: C.card },
+  filterChipActive: { backgroundColor: C.green, borderColor: C.green },
+  filterTxt:        { fontSize: 12, color: C.muted, fontWeight: '500' },
+  filterTxtActive:  { color: C.white },
+  loadingWrap:      { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  loadingTxt:       { fontSize: 14, color: C.muted },
+  scroll:           { paddingHorizontal: 20, paddingBottom: 100, gap: 10 },
+  emptyWrap:        { alignItems: 'center', paddingTop: 60, gap: 12 },
+  emptyIcon:        { fontSize: 48 },
+  emptyTitle:       { fontSize: 18, fontWeight: '700', color: C.white },
+  emptySub:         { fontSize: 14, color: C.muted },
+  pubCard:          { backgroundColor: C.card, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: C.cardB, gap: 10 },
+  pubTop:           { flexDirection: 'row', gap: 12 },
+  pubImgWrap:       { width: 64, height: 64, borderRadius: 12, backgroundColor: '#1A4A28', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  pubImg:           { width: '100%', height: '100%' },
+  pubEmoji:         { fontSize: 32 },
+  pubInfo:          { flex: 1 },
+  pubNameRow:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  pubName:          { fontSize: 14, fontWeight: '700', color: C.white, flex: 1, marginRight: 8 },
+  statusBadge:      { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  statusTxt:        { fontSize: 10, fontWeight: '700' },
+  pubBreed:         { fontSize: 12, color: C.muted, marginBottom: 2 },
+  pubVendedor:      { fontSize: 12, color: C.lGreen, marginBottom: 2 },
+  pubMeta:          { fontSize: 11, color: C.muted, marginBottom: 2 },
+  pubPrice:         { fontSize: 14, fontWeight: '700', color: C.green },
+  pendingBanner:    { backgroundColor: C.orange + '15', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: C.orange + '44' },
+  pendingBannerTxt: { fontSize: 12, color: C.orange, fontWeight: '600', marginBottom: 8 },
+  pendingActions:   { flexDirection: 'row', gap: 8 },
+  rejectBtnSmall:   { flex: 1, height: 34, borderRadius: 8, borderWidth: 1, borderColor: C.red, alignItems: 'center', justifyContent: 'center' },
+  rejectBtnSmallTxt:{ fontSize: 12, color: C.red, fontWeight: '600' },
+  approveBtnSmall:  { flex: 1, height: 34, borderRadius: 8, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
+  approveBtnSmallTxt:{ fontSize: 12, color: C.white, fontWeight: '700' },
+});
+
+const m = StyleSheet.create({
+  overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modal:       { backgroundColor: '#1A3D24', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, maxHeight: '90%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle:  { fontSize: 18, fontWeight: '700', color: C.white },
+  closeBtn:    { fontSize: 20, color: C.muted, padding: 4 },
+  imgWrap:     { height: 160, backgroundColor: C.card, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 16, overflow: 'hidden' },
+  img:         { width: '100%', height: '100%' },
+  imgEmoji:    { fontSize: 64 },
+  pubName:     { fontSize: 20, fontWeight: '700', color: C.white, marginBottom: 8 },
+  statusBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 10 },
+  statusTxt:   { fontSize: 12, fontWeight: '700' },
+  row:         { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.cardB },
+  rowLabel:    { fontSize: 13, color: C.muted },
+  rowVal:      { fontSize: 13, color: C.white, fontWeight: '600' },
+  descCard:    { backgroundColor: C.card, borderRadius: 12, padding: 14, marginTop: 12, borderWidth: 1, borderColor: C.cardB },
+  descLabel:   { fontSize: 10, fontWeight: '700', color: C.muted, letterSpacing: 1, marginBottom: 6 },
+  descTxt:     { fontSize: 13, color: C.white, lineHeight: 20 },
+  actions:     { flexDirection: 'row', gap: 8, marginTop: 16 },
+  approveBtn:  { flex: 1, height: 44, borderRadius: 10, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' },
+  approveTxt:  { fontSize: 13, color: C.white, fontWeight: '700' },
+  pauseBtn:    { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, borderColor: C.muted, alignItems: 'center', justifyContent: 'center' },
+  pauseTxt:    { fontSize: 13, color: C.muted, fontWeight: '600' },
+  rejectBtn:   { flex: 1, height: 44, borderRadius: 10, borderWidth: 1, borderColor: C.red, alignItems: 'center', justifyContent: 'center' },
+  rejectTxt:   { fontSize: 13, color: C.red, fontWeight: '600' },
+  deleteBtn:   { height: 44, borderRadius: 10, backgroundColor: C.red + '22', alignItems: 'center', justifyContent: 'center', marginTop: 8, borderWidth: 1, borderColor: C.red + '44' },
+  deleteTxt:   { fontSize: 13, color: C.red, fontWeight: '600' },
 });
